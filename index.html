@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Placement Mock Test — Round 1</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ================= CANDIDATE DETAILS ================= -->
+  <section id="screen-candidate" class="screen active">
+    <header class="exam-head">
+      <h1>Placement Mock Test — Round 1</h1>
+      <p class="subtitle">Data Analytics Fresher Screening Assessment</p>
+    </header>
+
+    <div class="panel">
+      <h2>Candidate Details</h2>
+      <form id="candidate-form" class="cand-form" autocomplete="off">
+        <label>
+          <span>Full Name</span>
+          <input type="text" id="cand-name" required maxlength="60" />
+        </label>
+        <label>
+          <span>GRID / Student ID</span>
+          <input type="text" id="cand-grid" required maxlength="30" />
+        </label>
+        <label>
+          <span>Batch</span>
+          <input type="text" id="cand-batch" required maxlength="30" />
+        </label>
+        <label>
+          <span>Date</span>
+          <input type="text" id="cand-date" readonly />
+        </label>
+        <label>
+          <span>Start Time</span>
+          <input type="text" id="cand-start" readonly />
+        </label>
+
+        <div class="cand-actions">
+          <button type="submit" class="btn primary">Continue to Instructions</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <!-- ================= INSTRUCTIONS ================= -->
+  <section id="screen-instructions" class="screen">
+    <header class="exam-head">
+      <h1>Instructions</h1>
+      <p class="subtitle" id="instr-candidate"></p>
+    </header>
+
+    <div class="panel">
+      <table class="info-table">
+        <tbody>
+          <tr><td>Total Questions</td><td>50</td></tr>
+          <tr><td>Duration</td><td>60 Minutes</td></tr>
+          <tr><td>Marks per Question</td><td>1</td></tr>
+          <tr><td>Total Marks</td><td>50</td></tr>
+          <tr><td>Negative Marking</td><td>None (0 marks for wrong answers)</td></tr>
+          <tr><td>Unattempted</td><td>0 marks</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Read carefully</h3>
+      <ol class="instr-list">
+        <li>The paper has <strong>50 MCQs</strong> across <strong>5 sections</strong>: Quantitative Aptitude, Logical Reasoning, SQL &amp; Database, Python &amp; Programming, Data Analytics / Statistics / Power BI.</li>
+        <li>The <strong>timer starts</strong> as soon as you click <em>Start Test</em> and cannot be paused.</li>
+        <li>All questions <strong>must be attempted</strong> before submission is enabled.</li>
+        <li>Once submitted, answers <strong>cannot be changed</strong>.</li>
+        <li>Use the <strong>question palette</strong> on the right to jump between questions.</li>
+        <li>Your answers are <strong>auto-saved</strong> locally — if you refresh, they will be restored (if the test hasn't been submitted).</li>
+        <li>Warnings appear at the <strong>10-minute</strong> and <strong>5-minute</strong> marks; the test auto-submits at <strong>00:00</strong>.</li>
+        <li>Use of calculators is not permitted.</li>
+      </ol>
+
+      <div class="cand-actions">
+        <button id="btn-back-details" class="btn ghost">Back</button>
+        <button id="btn-start-test" class="btn primary">Start Test</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= QUIZ ================= -->
+  <section id="screen-quiz" class="screen">
+    <header class="quiz-top">
+      <div class="top-left">
+        <div class="cand-mini" id="cand-mini">—</div>
+        <div class="timer" id="timer">60:00</div>
+      </div>
+      <div class="top-right">
+        <span id="progress-text">0 / 50 attempted</span>
+      </div>
+    </header>
+
+    <div class="warn-bar" id="warn-bar"></div>
+
+    <div class="quiz-body">
+      <div class="question-pane">
+        <div class="q-meta">
+          <span id="q-number">Question 1</span>
+          <span class="q-section" id="q-section">Section A</span>
+        </div>
+        <h2 id="q-text">Loading…</h2>
+        <div class="options" id="q-options"></div>
+
+        <div class="q-nav">
+          <button id="btn-prev" class="btn ghost">Previous</button>
+          <button id="btn-clear" class="btn ghost">Clear Answer</button>
+          <button id="btn-next" class="btn ghost">Save &amp; Next</button>
+          <button id="btn-submit" class="btn primary" disabled>Submit Test</button>
+        </div>
+      </div>
+
+      <aside class="palette-pane">
+        <h3>Question Palette</h3>
+
+        <div class="legend">
+          <span class="lg"><span class="dot visited-answered"></span> Answered</span>
+          <span class="lg"><span class="dot visited-unanswered"></span> Visited, Not Answered</span>
+          <span class="lg"><span class="dot not-visited"></span> Not Visited</span>
+          <span class="lg"><span class="dot current"></span> Current Question</span>
+        </div>
+
+        <div class="palette" id="palette"></div>
+
+        <div class="palette-note" id="palette-note">
+          All 50 questions must be attempted before you can submit.
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ================= RESULT ================= -->
+  <section id="screen-result" class="screen">
+    <header class="exam-head">
+      <h1>Test Completed</h1>
+      <p class="subtitle" id="res-candidate-line">—</p>
+    </header>
+
+    <div class="panel">
+      <div class="result-grid">
+        <div class="score-block">
+          <div class="score-main" id="res-score">0</div>
+          <div class="score-max">out of 50</div>
+          <div class="score-pct" id="res-pct">0%</div>
+          <div class="score-level" id="res-level">—</div>
+        </div>
+
+        <div class="stat-block">
+          <div><span class="k">Correct</span><span class="v" id="res-correct">0</span></div>
+          <div><span class="k">Incorrect</span><span class="v" id="res-wrong">0</span></div>
+          <div><span class="k">Unattempted</span><span class="v" id="res-unatt">0</span></div>
+          <div><span class="k">Attempted</span><span class="v" id="res-attempted">0 / 50</span></div>
+          <div><span class="k">Time Taken</span><span class="v" id="res-time">00:00</span></div>
+          <div><span class="k">Status</span><span class="v" id="res-status">—</span></div>
+        </div>
+      </div>
+
+      <h3>Topic-wise Performance</h3>
+      <table class="perf-table">
+        <thead>
+          <tr>
+            <th>Section</th>
+            <th>Topic</th>
+            <th class="num">Correct</th>
+            <th class="num">Total</th>
+            <th class="num">Accuracy</th>
+          </tr>
+        </thead>
+        <tbody id="perf-body"></tbody>
+      </table>
+
+      <div class="export-actions">
+        <button id="btn-print" class="btn ghost">Print / Save as PDF</button>
+        <button id="btn-csv" class="btn ghost">Download CSV</button>
+        <button id="btn-copy" class="btn ghost">Copy Result</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Question Review</h3>
+
+      <div class="result-controls">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="wrong">Incorrect</button>
+        <button class="filter-btn" data-filter="correct">Correct</button>
+        <button class="filter-btn" data-filter="unattempted">Unattempted</button>
+      </div>
+
+      <div class="review" id="review"></div>
+    </div>
+
+    <div class="end-actions">
+      <button id="btn-restart" class="btn primary">Restart Test</button>
+    </div>
+  </section>
+
+</div>
+
+<!-- ================= CONFIRM SUBMIT MODAL ================= -->
+<div id="modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h3 id="modal-title">Confirm Submission</h3>
+    <p id="modal-body">Are you sure?</p>
+    <div class="modal-actions">
+      <button id="modal-cancel" class="btn ghost">Cancel</button>
+      <button id="modal-confirm" class="btn primary">Yes, Submit</button>
+    </div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
