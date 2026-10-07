@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Placement Mock Test — Round 1</title>
+<title>Placement Mock Test — Python Round 1</title>
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -13,8 +13,8 @@
   <!-- ================= CANDIDATE DETAILS ================= -->
   <section id="screen-candidate" class="screen active">
     <header class="exam-head">
-      <h1>Placement Mock Test — Round 1</h1>
-      <p class="subtitle">Data Analytics Fresher Screening Assessment</p>
+      <h1>Placement Mock Test — Python Round 1</h1>
+      <p class="subtitle">Python Programming Fresher Screening Assessment</p>
     </header>
 
     <div class="panel">
@@ -58,10 +58,10 @@
     <div class="panel">
       <table class="info-table">
         <tbody>
-          <tr><td>Total Questions</td><td>50</td></tr>
-          <tr><td>Duration</td><td>60 Minutes</td></tr>
+          <tr><td>Total Questions</td><td>80</td></tr>
+          <tr><td>Duration</td><td>80 Minutes</td></tr>
           <tr><td>Marks per Question</td><td>1</td></tr>
-          <tr><td>Total Marks</td><td>50</td></tr>
+          <tr><td>Total Marks</td><td>80</td></tr>
           <tr><td>Negative Marking</td><td>None (0 marks for wrong answers)</td></tr>
           <tr><td>Unattempted</td><td>0 marks</td></tr>
         </tbody>
@@ -69,7 +69,7 @@
 
       <h3>Read carefully</h3>
       <ol class="instr-list">
-        <li>The paper has <strong>50 MCQs</strong> across <strong>5 sections</strong>: Quantitative Aptitude, Logical Reasoning, SQL &amp; Database, Python &amp; Programming, Data Analytics / Statistics / Power BI.</li>
+        <li>The paper has <strong>80 MCQs</strong> across <strong>4 sections</strong>: Python Basics, Variables, Data Types, and Operators.</li>
         <li>The <strong>timer starts</strong> as soon as you click <em>Start Test</em> and cannot be paused.</li>
         <li>All questions <strong>must be attempted</strong> before submission is enabled.</li>
         <li>Once submitted, answers <strong>cannot be changed</strong>.</li>
@@ -91,10 +91,10 @@
     <header class="quiz-top">
       <div class="top-left">
         <div class="cand-mini" id="cand-mini">—</div>
-        <div class="timer" id="timer">60:00</div>
+        <div class="timer" id="timer">80:00</div>
       </div>
       <div class="top-right">
-        <span id="progress-text">0 / 50 attempted</span>
+        <span id="progress-text">0 / 80 attempted</span>
       </div>
     </header>
 
@@ -106,7 +106,11 @@
           <span id="q-number">Question 1</span>
           <span class="q-section" id="q-section">Section A</span>
         </div>
+
         <h2 id="q-text">Loading…</h2>
+
+        <div id="q-table" class="q-table-wrap"></div>
+
         <div class="options" id="q-options"></div>
 
         <div class="q-nav">
@@ -130,7 +134,7 @@
         <div class="palette" id="palette"></div>
 
         <div class="palette-note" id="palette-note">
-          All 50 questions must be attempted before you can submit.
+          All 80 questions must be attempted before you can submit.
         </div>
       </aside>
     </div>
@@ -147,7 +151,7 @@
       <div class="result-grid">
         <div class="score-block">
           <div class="score-main" id="res-score">0</div>
-          <div class="score-max">out of 50</div>
+          <div class="score-max">out of 80</div>
           <div class="score-pct" id="res-pct">0%</div>
           <div class="score-level" id="res-level">—</div>
         </div>
@@ -156,7 +160,7 @@
           <div><span class="k">Correct</span><span class="v" id="res-correct">0</span></div>
           <div><span class="k">Incorrect</span><span class="v" id="res-wrong">0</span></div>
           <div><span class="k">Unattempted</span><span class="v" id="res-unatt">0</span></div>
-          <div><span class="k">Attempted</span><span class="v" id="res-attempted">0 / 50</span></div>
+          <div><span class="k">Attempted</span><span class="v" id="res-attempted">0 / 80</span></div>
           <div><span class="k">Time Taken</span><span class="v" id="res-time">00:00</span></div>
           <div><span class="k">Status</span><span class="v" id="res-status">—</span></div>
         </div>
