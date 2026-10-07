@@ -99,3 +99,702 @@ const FALLBACK_QUESTIONS = [
   { section: "D", topic: "Operators", question: "Which has the highest precedence?", options: ["+", "*", "**", "()"], answer: 3, explanation: "Parentheses have highest precedence." },
   { section: "D", topic: "Operators", question: "x += 5 is equivalent to:", options: ["x = 5", "x = x + 5", "x == x + 5", "x = +5"], answer: 1, explanation: "+= adds and assigns." }
 ];
+
+/* ---------------------------------------------------------
+   State
+   --------------------------------------------------------- */
+const state = {
+  questions: [],
+  answers: [],
+  visits: [],
+  current: 0,
+  timeLeft: TOTAL_TIME_SECONDS,
+  timerId: null,
+  startedAt: null,
+  startedAtISO: null,
+  finished: false,
+  reviewFilter: "all",
+  candidate: { name: "", grid: "", batch: "", date: "", startTime: "" }
+};
+
+/* ---------------------------------------------------------
+   DOM shortcuts
+   --------------------------------------------------------- */
+const $ = (id) => document.getElementById(id);
+const screens = {
+  candidate: $("screen-candidate"),
+  instructions: $("screen-instructions"),
+  quiz: $("screen-quiz"),
+  result: $("screen-result")
+};
+function showScreen(name) {
+  Object.values(screens).forEach((s) => s.classList.remove("active"));
+  screens[name].classList.add("active");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+/* ---------------------------------------------------------
+   Load questions
+   --------------------------------------------------------- */
+async function loadQuestions() {
+  try {
+    const res = await fetch("questions.txt", { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const text = await res.text();
+    const cleaned = text.split("\n").filter((ln) => !ln.trim().startsWith("//")).join("\n");
+    const parsed = JSON.parse(cleaned);
+    if (!Array.isArray(parsed) || parsed.length === 0) throw new Error("Empty");
+    return parsed;
+  } catch (err) {
+    console.warn("Using fallback questions:", err);
+    return FALLBACK_QUESTIONS;
+  }
+}
+
+/* ---------------------------------------------------------
+   Shuffle helpers
+   --------------------------------------------------------- */
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function buildShuffledQuestions(raw) {
+  return shuffle(raw).map((q) => {
+    const pairs = q.options.map((opt, i) => ({ opt, i }));
+    const shuffled = shuffle(pairs);
+    const newOptions = shuffled.map((p) => p.opt);
+    const newAnswer = shuffled.findIndex((p) => p.i === q.answer);
+    return { ...q, options: newOptions, answer: newAnswer };
+  });
+}
+
+/* ---------------------------------------------------------
+   Candidate form
+   --------------------------------------------------------- */
+function initCandidateForm() {
+  const now = new Date();
+  $("cand-date").value = now.toLocaleDateString();
+  $("cand-start").value = now.toLocaleTimeString();
+
+  $("candidate-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    state.candidate.name = $("cand-name").value.trim();
+    state.candidate.grid = $("cand-grid").value.trim();
+    state.candidate.batch = $("cand-batch").value.trim();
+    state.candidate.date = $("cand-date").value;
+    state.candidate.startTime = $("cand-start").value;
+
+    $("instr-candidate").textContent =
+      `${state.candidate.name} · ${state.candidate.grid} · ${state.candidate.batch}`;
+    showScreen("instructions");
+  });
+
+  $("btn-back-details").addEventListener("click", () => showScreen("candidate"));
+}
+
+/* ---------------------------------------------------------
+   Start test
+   --------------------------------------------------------- */
+async function startTest() {
+  const raw = await loadQuestions();
+  state.questions = buildShuffledQuestions(raw);
+  state.answers = new Array(state.questions.length).fill(null);
+  state.visits = new Array(state.questions.length).fill(false);
+  state.current = 0;
+  state.timeLeft = TOTAL_TIME_SECONDS;
+  state.finished = false;
+  state.startedAt = Date.now();
+  state.startedAtISO = new Date().toISOString();
+
+  $("cand-mini").textContent =
+    `${state.candidate.name} · ${state.candidate.grid} · ${state.candidate.batch}`;
+
+  buildPalette();
+  markVisited(0);
+  renderQuestion();
+  updateProgress();
+  startTimer();
+  saveState();
+  showScreen("quiz");
+}
+
+/* ---------------------------------------------------------
+   Timer
+   --------------------------------------------------------- */
+function startTimer() {
+  updateTimerLabel();
+  if (state.timerId) clearInterval(state.timerId);
+  state.timerId = setInterval(() => {
+    state.timeLeft--;
+    updateTimerLabel();
+    showTimerWarnings();
+    saveState();
+    if (state.timeLeft <= 0) {
+      clearInterval(state.timerId);
+      autoSubmit();
+    }
+  }, 1000);
+}
+function updateTimerLabel() {
+  const t = Math.max(0, state.timeLeft);
+  const m = String(Math.floor(t / 60)).padStart(2, "0");
+  const s = String(t % 60).padStart(2, "0");
+  const el = $("timer");
+  el.textContent = `${m}:${s}`;
+  el.classList.toggle("warning", t <= 600);
+}
+function showTimerWarnings() {
+  const bar = $("warn-bar");
+  const t = state.timeLeft;
+  if (t === 600) { bar.textContent = "10 minutes remaining."; bar.classList.add("show"); }
+  else if (t === 300) { bar.textContent = "5 minutes remaining."; bar.classList.add("show"); }
+  else if (t === 60) { bar.textContent = "1 minute remaining. Test will auto-submit."; bar.classList.add("show"); }
+  else if (t > 600) { bar.classList.remove("show"); }
+}
+
+/* ---------------------------------------------------------
+   Render data table
+   --------------------------------------------------------- */
+function renderDataTable(table) {
+  if (!table || !table.headers || !table.rows) return "";
+  const cap = table.caption
+    ? `<caption>${escapeHTML(table.caption)}</caption>` : "";
+  const thead = `<thead><tr>${table.headers
+    .map((h) => `<th>${escapeHTML(h)}</th>`)
+    .join("")}</tr></thead>`;
+  const tbody = `<tbody>${table.rows
+    .map((row) => `<tr>${row
+      .map((cell) => `<td>${escapeHTML(cell)}</td>`)
+      .join("")}</tr>`)
+    .join("")}</tbody>`;
+  return `<table class="q-table">${cap}${thead}${tbody}</table>`;
+}
+
+/* ---------------------------------------------------------
+   Render question
+   --------------------------------------------------------- */
+function renderQuestion() {
+  const idx = state.current;
+  const q = state.questions[idx];
+  const total = state.questions.length;
+
+  $("q-number").textContent = `Question ${idx + 1} of ${total}`;
+  $("q-section").textContent = `Section ${q.section || "-"} — ${q.topic || ""}`;
+  $("q-text").textContent = q.question;
+
+  const tableWrap = $("q-table");
+  tableWrap.innerHTML = q.table ? renderDataTable(q.table) : "";
+
+  const wrap = $("q-options");
+  wrap.innerHTML = "";
+  q.options.forEach((opt, i) => {
+    const div = document.createElement("div");
+    div.className = "option" + (state.answers[idx] === i ? " selected" : "");
+    div.innerHTML = `
+      <div class="marker">${String.fromCharCode(65 + i)}</div>
+      <div class="opt-text">${escapeHTML(opt)}</div>
+    `;
+    div.addEventListener("click", () => selectOption(i));
+    wrap.appendChild(div);
+  });
+
+  $("btn-prev").disabled = idx === 0;
+  $("btn-next").disabled = idx === total - 1;
+
+  markVisited(idx);
+  refreshPalette();
+}
+
+function selectOption(i) {
+  state.answers[state.current] = i;
+  const opts = $("q-options").querySelectorAll(".option");
+  opts.forEach((el, k) => el.classList.toggle("selected", k === i));
+  updateProgress();
+  refreshPalette();
+  saveState();
+}
+function clearAnswer() {
+  state.answers[state.current] = null;
+  const opts = $("q-options").querySelectorAll(".option");
+  opts.forEach((el) => el.classList.remove("selected"));
+  updateProgress();
+  refreshPalette();
+  saveState();
+}
+function markVisited(i) { if (!state.visits[i]) state.visits[i] = true; }
+
+/* ---------------------------------------------------------
+   Palette
+   --------------------------------------------------------- */
+function buildPalette() {
+  const pal = $("palette");
+  pal.innerHTML = "";
+  state.questions.forEach((_, i) => {
+    const b = document.createElement("button");
+    b.className = "pal-btn not-visited";
+    b.textContent = i + 1;
+    b.addEventListener("click", () => {
+      state.current = i;
+      renderQuestion();
+    });
+    pal.appendChild(b);
+  });
+}
+function refreshPalette() {
+  const buttons = $("palette").querySelectorAll(".pal-btn");
+  buttons.forEach((b, i) => {
+    b.classList.remove("visited-answered", "visited-unanswered", "not-visited", "current");
+    if (i === state.current) b.classList.add("current");
+    if (!state.visits[i]) b.classList.add("not-visited");
+    else if (state.answers[i] !== null) b.classList.add("visited-answered");
+    else b.classList.add("visited-unanswered");
+  });
+
+  const attempted = state.answers.filter((a) => a !== null).length;
+  const total = state.questions.length;
+  const ready = attempted === total;
+
+  const note = $("palette-note");
+  note.classList.toggle("ready", ready);
+  note.textContent = ready
+    ? "All questions attempted. You may submit now."
+    : `All questions must be attempted before submitting. (${attempted} / ${total})`;
+
+  $("btn-submit").disabled = !ready;
+}
+function updateProgress() {
+  const attempted = state.answers.filter((a) => a !== null).length;
+  $("progress-text").textContent = `${attempted} / ${state.questions.length} attempted`;
+}
+
+/* ---------------------------------------------------------
+   Navigation
+   --------------------------------------------------------- */
+function goPrev() {
+  if (state.current > 0) { state.current--; renderQuestion(); saveState(); }
+}
+function goNext() {
+  if (state.current < state.questions.length - 1) { state.current++; renderQuestion(); saveState(); }
+}
+
+/* ---------------------------------------------------------
+   Auto-save
+   --------------------------------------------------------- */
+function saveState() {
+  if (state.finished) return;
+  const snapshot = {
+    candidate: state.candidate,
+    questions: state.questions,
+    answers: state.answers,
+    visits: state.visits,
+    current: state.current,
+    timeLeft: state.timeLeft,
+    startedAt: state.startedAt,
+    startedAtISO: state.startedAtISO
+  };
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot)); } catch (_) {}
+}
+function loadSavedState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const s = JSON.parse(raw);
+    if (!s.questions || !s.questions.length) return false;
+    Object.assign(state, {
+      candidate: s.candidate || state.candidate,
+      questions: s.questions,
+      answers: s.answers || new Array(s.questions.length).fill(null),
+      visits: s.visits || new Array(s.questions.length).fill(false),
+      current: s.current || 0,
+      timeLeft: typeof s.timeLeft === "number" ? s.timeLeft : TOTAL_TIME_SECONDS,
+      startedAt: s.startedAt || Date.now(),
+      startedAtISO: s.startedAtISO || new Date().toISOString()
+    });
+    return true;
+  } catch (_) { return false; }
+}
+function clearSavedState() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+}
+
+/* ---------------------------------------------------------
+   Submit
+   --------------------------------------------------------- */
+function askSubmit() {
+  const attempted = state.answers.filter((a) => a !== null).length;
+  const total = state.questions.length;
+  const unanswered = total - attempted;
+  if (unanswered > 0) {
+    showModal(
+      "Cannot Submit Yet",
+      `You have attempted ${attempted} out of ${total} questions.\n${unanswered} question(s) are unanswered.\nAll questions must be attempted before submitting.`,
+      null
+    );
+    return;
+  }
+  showModal(
+    "Confirm Submission",
+    `You have attempted all ${total} questions.\nAre you sure you want to submit? Answers cannot be changed after submission.`,
+    doSubmit
+  );
+}
+function doSubmit() {
+  if (state.finished) return;
+  state.finished = true;
+  if (state.timerId) clearInterval(state.timerId);
+  clearSavedState();
+  computeAndShowResult(false);
+}
+function autoSubmit() {
+  if (state.finished) return;
+  state.finished = true;
+  if (state.timerId) clearInterval(state.timerId);
+  clearSavedState();
+  computeAndShowResult(true);
+}
+
+/* ---------------------------------------------------------
+   Compute and show result
+   --------------------------------------------------------- */
+function computeAndShowResult(isAuto) {
+  const total = state.questions.length;
+  let correct = 0, wrong = 0, unattempted = 0, attempted = 0;
+  const sectionAgg = {};
+
+  state.questions.forEach((q, i) => {
+    const sec = q.section || "-";
+    if (!sectionAgg[sec]) sectionAgg[sec] = { topic: q.topic, total: 0, correct: 0 };
+    sectionAgg[sec].total++;
+
+    const user = state.answers[i];
+    if (user === null) { unattempted++; return; }
+    attempted++;
+    if (user === q.answer) { correct++; sectionAgg[sec].correct++; }
+    else wrong++;
+  });
+
+  const marks = +(correct - wrong * NEGATIVE_MARK).toFixed(2);
+  const pct = Math.round((marks / MAX_MARKS) * 100);
+  const timeUsed = TOTAL_TIME_SECONDS - Math.max(0, state.timeLeft);
+
+  $("res-candidate-line").textContent =
+    `${state.candidate.name} · ${state.candidate.grid} · ${state.candidate.batch} · ${state.candidate.date} ${state.candidate.startTime}`;
+
+  $("res-score").textContent = marks;
+  $("res-pct").textContent = `${pct}%`;
+  $("res-correct").textContent = correct;
+  $("res-wrong").textContent = wrong;
+  $("res-unatt").textContent = unattempted;
+  $("res-attempted").textContent = `${attempted} / ${total}`;
+  $("res-time").textContent = formatDuration(timeUsed);
+  $("res-level").textContent = levelFromMarks(marks);
+  $("res-status").textContent = isAuto ? "Auto-submitted (time up)" : "Submitted";
+
+  const body = $("perf-body");
+  body.innerHTML = "";
+  Object.keys(sectionAgg).sort().forEach((sec) => {
+    const s = sectionAgg[sec];
+    const acc = s.total ? Math.round((s.correct / s.total) * 100) : 0;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${sec}</td>
+      <td>${escapeHTML(s.topic || "")}</td>
+      <td class="num">${s.correct}</td>
+      <td class="num">${s.total}</td>
+      <td class="num">${acc}%</td>
+    `;
+    body.appendChild(tr);
+  });
+
+  renderReview();
+  showScreen("result");
+}
+function levelFromMarks(m) {
+  const pct = (m / MAX_MARKS) * 100;
+  if (pct >= 80) return "Excellent — Placement Ready";
+  if (pct >= 70) return "Very Good";
+  if (pct >= 60) return "Good";
+  if (pct >= 50) return "Needs Improvement";
+  if (pct >= 40) return "Weak";
+  return "Requires Significant Preparation";
+}
+function formatDuration(sec) {
+  const m = String(Math.floor(sec / 60)).padStart(2, "0");
+  const s = String(sec % 60).padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+/* ---------------------------------------------------------
+   Review
+   --------------------------------------------------------- */
+function renderReview() {
+  const wrap = $("review");
+  wrap.innerHTML = "";
+
+  state.questions.forEach((q, i) => {
+    const user = state.answers[i];
+    const isCorrect = user === q.answer;
+    const isUnattempted = user === null;
+
+    const item = document.createElement("div");
+    let cls = "review-item ";
+    cls += isUnattempted ? "unattempted" : (isCorrect ? "correct" : "wrong");
+    item.className = cls;
+    item.dataset.state = isUnattempted ? "unattempted" : (isCorrect ? "correct" : "wrong");
+
+    let html = `
+      <div class="review-head">
+        <span>Q${i + 1} · Section ${q.section || "-"} · ${escapeHTML(q.topic || "")}</span>
+        <span>${isUnattempted ? "Unattempted" : (isCorrect ? "Correct" : "Incorrect")}</span>
+      </div>
+      <div class="review-q">${escapeHTML(q.question)}</div>
+    `;
+
+    if (q.table) {
+      html += `<div class="q-table-wrap">${renderDataTable(q.table)}</div>`;
+    }
+
+    if (isCorrect) {
+      html += `<div class="review-line correct"><strong>Your answer:</strong> ${escapeHTML(q.options[user])}</div>`;
+    } else if (isUnattempted) {
+      html += `<div class="review-line neutral"><strong>Your answer:</strong> Not attempted</div>`;
+      html += `<div class="review-line correct"><strong>Correct answer:</strong> ${escapeHTML(q.options[q.answer])}</div>`;
+    } else {
+      html += `<div class="review-line wrong"><strong>Your answer:</strong> ${escapeHTML(q.options[user])}</div>`;
+      html += `<div class="review-line correct"><strong>Correct answer:</strong> ${escapeHTML(q.options[q.answer])}</div>`;
+    }
+
+    if (q.explanation) {
+      html += `<div class="review-exp"><strong>Explanation:</strong> ${escapeHTML(q.explanation)}</div>`;
+    }
+
+    item.innerHTML = html;
+    wrap.appendChild(item);
+  });
+
+  applyReviewFilter(state.reviewFilter);
+}
+function applyReviewFilter(filter) {
+  state.reviewFilter = filter;
+  document.querySelectorAll(".filter-btn").forEach((b) =>
+    b.classList.toggle("active", b.dataset.filter === filter)
+  );
+  document.querySelectorAll(".review-item").forEach((el) => {
+    if (filter === "all") el.style.display = "";
+    else if (filter === "wrong") el.style.display = el.dataset.state === "wrong" ? "" : "none";
+    else if (filter === "correct") el.style.display = el.dataset.state === "correct" ? "" : "none";
+    else if (filter === "unattempted") el.style.display = el.dataset.state === "unattempted" ? "" : "none";
+  });
+}
+
+/* ---------------------------------------------------------
+   Modal
+   --------------------------------------------------------- */
+let modalCallback = null;
+function showModal(title, body, onConfirm) {
+  $("modal-title").textContent = title;
+  $("modal-body").textContent = body;
+  $("modal").classList.remove("hidden");
+  modalCallback = onConfirm;
+}
+function hideModal() {
+  $("modal").classList.add("hidden");
+  modalCallback = null;
+}
+
+/* ---------------------------------------------------------
+   Export
+   --------------------------------------------------------- */
+function exportPrint() { window.print(); }
+
+function exportCSV() {
+  const lines = [];
+  lines.push("Candidate," + csv(state.candidate.name));
+  lines.push("GRID," + csv(state.candidate.grid));
+  lines.push("Batch," + csv(state.candidate.batch));
+  lines.push("Date," + csv(state.candidate.date));
+  lines.push("StartTime," + csv(state.candidate.startTime));
+  lines.push("");
+
+  let correct = 0, wrong = 0, unatt = 0, attempted = 0;
+  state.questions.forEach((q, i) => {
+    const u = state.answers[i];
+    if (u === null) { unatt++; return; }
+    attempted++;
+    if (u === q.answer) correct++; else wrong++;
+  });
+  const marks = +(correct - wrong * NEGATIVE_MARK).toFixed(2);
+  const pct = Math.round((marks / MAX_MARKS) * 100);
+  const timeUsed = TOTAL_TIME_SECONDS - Math.max(0, state.timeLeft);
+
+  lines.push("Score," + marks + " / " + MAX_MARKS);
+  lines.push("Percentage," + pct + "%");
+  lines.push("Correct," + correct);
+  lines.push("Incorrect," + wrong);
+  lines.push("Unattempted," + unatt);
+  lines.push("Attempted," + attempted + " / " + state.questions.length);
+  lines.push("TimeTaken," + formatDuration(timeUsed));
+  lines.push("");
+
+  lines.push("Q#,Section,Topic,Question,YourAnswer,CorrectAnswer,Result,Explanation");
+  state.questions.forEach((q, i) => {
+    const u = state.answers[i];
+    const your = u === null ? "Not Attempted" : q.options[u];
+    const corr = q.options[q.answer];
+    const result = u === null ? "Unattempted" : (u === q.answer ? "Correct" : "Incorrect");
+    lines.push([
+      i + 1,
+      csv(q.section || ""),
+      csv(q.topic || ""),
+      csv(q.question),
+      csv(your),
+      csv(corr),
+      csv(result),
+      csv(q.explanation || "")
+    ].join(","));
+  });
+
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `placement_mock_${sanitizeFilename(state.candidate.grid || "candidate")}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function csv(s) {
+  const v = String(s == null ? "" : s);
+  return '"' + v.replace(/"/g, '""') + '"';
+}
+function sanitizeFilename(s) {
+  return String(s).replace(/[^a-z0-9_\-]+/gi, "_");
+}
+
+function copyResult() {
+  let correct = 0, wrong = 0, unatt = 0;
+  state.questions.forEach((q, i) => {
+    const u = state.answers[i];
+    if (u === null) unatt++;
+    else if (u === q.answer) correct++;
+    else wrong++;
+  });
+  const marks = +(correct - wrong * NEGATIVE_MARK).toFixed(2);
+  const pct = Math.round((marks / MAX_MARKS) * 100);
+  const timeUsed = TOTAL_TIME_SECONDS - Math.max(0, state.timeLeft);
+
+  const txt =
+`Candidate:  ${state.candidate.name}
+GRID:       ${state.candidate.grid}
+Batch:      ${state.candidate.batch}
+Date:       ${state.candidate.date} ${state.candidate.startTime}
+
+Score:      ${marks} / ${MAX_MARKS}
+Percentage: ${pct}%
+Time Taken: ${formatDuration(timeUsed)}
+
+Correct:     ${correct}
+Incorrect:   ${wrong}
+Unattempted: ${unatt}
+Status:      ${levelFromMarks(marks)}`;
+
+  navigator.clipboard.writeText(txt).then(() => {
+    showModal("Copied", "The result summary has been copied to your clipboard.", null);
+  }).catch(() => {
+    showModal("Copy Failed", "Your browser blocked clipboard access. Please use Print or CSV.", null);
+  });
+}
+
+/* ---------------------------------------------------------
+   Utilities
+   --------------------------------------------------------- */
+function escapeHTML(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/* ---------------------------------------------------------
+   Event bindings
+   --------------------------------------------------------- */
+document.addEventListener("DOMContentLoaded", () => {
+  initCandidateForm();
+
+  $("btn-start-test").addEventListener("click", startTest);
+  $("btn-prev").addEventListener("click", goPrev);
+  $("btn-next").addEventListener("click", goNext);
+  $("btn-clear").addEventListener("click", clearAnswer);
+  $("btn-submit").addEventListener("click", askSubmit);
+
+  $("modal-cancel").addEventListener("click", hideModal);
+  $("modal-confirm").addEventListener("click", () => {
+    const cb = modalCallback;
+    hideModal();
+    if (typeof cb === "function") cb();
+  });
+
+  document.querySelectorAll(".filter-btn").forEach((b) => {
+    b.addEventListener("click", () => applyReviewFilter(b.dataset.filter));
+  });
+
+  $("btn-print").addEventListener("click", exportPrint);
+  $("btn-csv").addEventListener("click", exportCSV);
+  $("btn-copy").addEventListener("click", copyResult);
+
+  $("btn-restart").addEventListener("click", () => {
+    if (state.timerId) clearInterval(state.timerId);
+    clearSavedState();
+    state.questions = [];
+    state.answers = [];
+    state.visits = [];
+    state.current = 0;
+    state.timeLeft = TOTAL_TIME_SECONDS;
+    state.finished = false;
+    state.candidate = { name: "", grid: "", batch: "", date: "", startTime: "" };
+    $("candidate-form").reset();
+    initCandidateForm();
+    showScreen("candidate");
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (!screens.quiz.classList.contains("active")) return;
+    if (e.key === "ArrowLeft") goPrev();
+    if (e.key === "ArrowRight") goNext();
+    if (/^[1-4]$/.test(e.key)) {
+      const i = parseInt(e.key, 10) - 1;
+      const opts = $("q-options").querySelectorAll(".option");
+      if (opts[i]) selectOption(i);
+    }
+  });
+
+  window.addEventListener("beforeunload", (e) => {
+    if (screens.quiz.classList.contains("active") && !state.finished && state.questions.length) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+  });
+
+  if (loadSavedState()) {
+    const msg = `An unfinished attempt was found for ${state.candidate.name || "a candidate"}. Resume?`;
+    if (window.confirm(msg)) {
+      $("cand-mini").textContent =
+        `${state.candidate.name} · ${state.candidate.grid} · ${state.candidate.batch}`;
+      buildPalette();
+      renderQuestion();
+      updateProgress();
+      updateTimerLabel();
+      startTimer();
+      showScreen("quiz");
+    } else {
+      clearSavedState();
+    }
+  }
+});
